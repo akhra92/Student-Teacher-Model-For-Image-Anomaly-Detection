@@ -70,7 +70,7 @@ If you find this work useful, please cite our paper:
 
 ```
 @article{rakhmonov2023extensive,
-  author    = {Rakhmonov, Akhrorjon Akhmadjon Ugli and Subramanian,     Barathi and Olimov, Bekhzod and Kim, Jeonghong},
+  author    = {Rakhmonov, Akhrorjon Akhmadjon Ugli and Subramanian, Barathi and Olimov, Bekhzod and Kim, Jeonghong},
   title     = {Extensive knowledge distillation model: An end-to-end effective anomaly detection model for real-time industrial applications},
   journal   = {IEEE Access},
   year      = {2023},
