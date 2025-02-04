@@ -1,6 +1,6 @@
 # Data parameters
-experiment_name: 'new_mnist_net1'
-dataset_name: mnist # [mnist, fashionmnist, cifar10, mvtec, custom]
+experiment_name: 'mnist_net1'
+dataset_name: mnist # [mnist, fashionmnist, cifar10, mvtec]
 last_checkpoint: 50
 
 
@@ -10,7 +10,7 @@ batch_size: 4
 learning_rate: 1e-3
 mvtec_img_size: 128
 
-normal_class: 3 # mvtec:'capsule', mnist:3, custom: '1'
+normal_class: 3 # mvtec:'capsule', mnist:3
 
 lamda: 0.05 # mvtec:0.5, Others:0.05
 
