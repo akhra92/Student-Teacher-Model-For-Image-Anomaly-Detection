@@ -22,15 +22,23 @@ class VGG(nn.Module):
         self.gradients = grad
 
     def forward(self, x, target_layer=11):
+        # Emit one feature per "block boundary" — i.e., after each MaxPool and
+        # after each ReLU not immediately followed by a MaxPool. This keeps
+        # student/teacher outputs aligned position-by-position regardless of
+        # whether BatchNorm is enabled or how cfg is laid out.
         result = []
-        for i in range(len(nn.ModuleList(self.features))):
-            x = self.features[i](x)
+        layers = list(self.features)
+        for i, layer in enumerate(layers):
+            x = layer(x)
             if i == target_layer:
                 self.activation = x
-                h = x.register_hook(self.activations_hook)
-            if i == 2 or i == 5 or i == 8 or i == 11 or i == 14 or i == 17 or i == 20 or i == 23 or i == 26 or i == 29 or i == 32 or i == 35 or i == 38:
+                if x.requires_grad:
+                    x.register_hook(self.activations_hook)
+            is_relu = isinstance(layer, nn.ReLU)
+            is_pool = isinstance(layer, nn.MaxPool2d)
+            next_is_pool = (i + 1 < len(layers)) and isinstance(layers[i + 1], nn.MaxPool2d)
+            if is_pool or (is_relu and not next_is_pool):
                 result.append(x)
-
         return result
 
     def get_activations_gradient(self):
@@ -81,10 +89,18 @@ class Vgg16(torch.nn.Module):
         self.output = []
 
     def forward(self, x):
+        # Same role-based emission as the student VGG: one feature after each
+        # MaxPool and after each ReLU not immediately followed by a MaxPool.
+        # Produces 13 outputs identical in shape to the student at indices
+        # 3, 6, 9, 12 (the layers used by the loss).
         output = []
-        for i in range(31):
-            x = self.features[i](x)
-            if i == 1 or i == 4 or i == 6 or i == 9 or i == 11 or i == 13 or i == 16 or i == 18 or i == 20 or i == 23 or i == 25 or i == 27 or i == 30:
+        layers = list(self.features)[:31]
+        for i, layer in enumerate(layers):
+            x = layer(x)
+            is_relu = isinstance(layer, nn.ReLU)
+            is_pool = isinstance(layer, nn.MaxPool2d)
+            next_is_pool = (i + 1 < len(layers)) and isinstance(layers[i + 1], nn.MaxPool2d)
+            if is_pool or (is_relu and not next_is_pool):
                 output.append(x)
         return output
 

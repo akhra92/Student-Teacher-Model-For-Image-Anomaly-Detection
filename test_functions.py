@@ -28,6 +28,9 @@ def detection_test(model, vgg, test_dataloader, config):
     similarity_loss = torch.nn.CosineSimilarity()
     label_score = []
     model.eval()
+    # Use the same layer set as training (loss_functions.MseDirectionLoss):
+    # layers 3, 6, 9, 12. The original test code skipped layer 3 — that drops
+    # a signal the student was explicitly trained to reproduce.
     for data in test_dataloader:
         X, Y = data
         if X.shape[1] == 1:
@@ -35,22 +38,27 @@ def detection_test(model, vgg, test_dataloader, config):
         X = Variable(X).cuda()
         output_pred = model.forward(X)
         output_real = vgg(X)
-        y_pred_1, y_pred_2, y_pred_3 = output_pred[6], output_pred[9], output_pred[12]
-        y_1, y_2, y_3 = output_real[6], output_real[9], output_real[12]
+        y_pred_0, y_pred_1, y_pred_2, y_pred_3 = output_pred[3], output_pred[6], output_pred[9], output_pred[12]
+        y_0, y_1, y_2, y_3 = output_real[3], output_real[6], output_real[9], output_real[12]
 
         if direction_only:
+            loss_0 = 1 - similarity_loss(y_pred_0.view(y_pred_0.shape[0], -1), y_0.view(y_0.shape[0], -1))
             loss_1 = 1 - similarity_loss(y_pred_1.view(y_pred_1.shape[0], -1), y_1.view(y_1.shape[0], -1))
             loss_2 = 1 - similarity_loss(y_pred_2.view(y_pred_2.shape[0], -1), y_2.view(y_2.shape[0], -1))
             loss_3 = 1 - similarity_loss(y_pred_3.view(y_pred_3.shape[0], -1), y_3.view(y_3.shape[0], -1))
-            total_loss = loss_1 + loss_2 + loss_3
+            total_loss = loss_0 + loss_1 + loss_2 + loss_3
         else:
+            abs_loss_0 = torch.mean((y_pred_0 - y_0) ** 2, dim=(1, 2, 3))
+            loss_0 = 1 - similarity_loss(y_pred_0.view(y_pred_0.shape[0], -1), y_0.view(y_0.shape[0], -1))
             abs_loss_1 = torch.mean((y_pred_1 - y_1) ** 2, dim=(1, 2, 3))
             loss_1 = 1 - similarity_loss(y_pred_1.view(y_pred_1.shape[0], -1), y_1.view(y_1.shape[0], -1))
             abs_loss_2 = torch.mean((y_pred_2 - y_2) ** 2, dim=(1, 2, 3))
             loss_2 = 1 - similarity_loss(y_pred_2.view(y_pred_2.shape[0], -1), y_2.view(y_2.shape[0], -1))
             abs_loss_3 = torch.mean((y_pred_3 - y_3) ** 2, dim=(1, 2, 3))
             loss_3 = 1 - similarity_loss(y_pred_3.view(y_pred_3.shape[0], -1), y_3.view(y_3.shape[0], -1))
-            total_loss = loss_1 + loss_2 + loss_3 + lamda * (abs_loss_1 + abs_loss_2 + abs_loss_3)
+            total_loss = loss_0 + loss_1 + loss_2 + loss_3 + lamda * (
+                abs_loss_0 + abs_loss_1 + abs_loss_2 + abs_loss_3
+            )
 
         label_score += list(zip(Y.cpu().data.numpy().tolist(), total_loss.cpu().data.numpy().tolist()))
        
@@ -89,15 +97,20 @@ def grad_calc(inputs, model, vgg, config):
     for i in range(inputs.shape[0]):
         output_pred = model.forward(inputs[i].unsqueeze(0), target_layer=14)
         output_real = vgg(inputs[i].unsqueeze(0))
-        y_pred_1, y_pred_2, y_pred_3 = output_pred[6], output_pred[9], output_pred[12]
-        y_1, y_2, y_3 = output_real[6], output_real[9], output_real[12]
+        # Match the training loss layers (3, 6, 9, 12).
+        y_pred_0, y_pred_1, y_pred_2, y_pred_3 = output_pred[3], output_pred[6], output_pred[9], output_pred[12]
+        y_0, y_1, y_2, y_3 = output_real[3], output_real[6], output_real[9], output_real[12]
+        abs_loss_0 = criterion(y_pred_0, y_0)
+        loss_0 = torch.mean(1 - similarity_loss(y_pred_0.view(y_pred_0.shape[0], -1), y_0.view(y_0.shape[0], -1)))
         abs_loss_1 = criterion(y_pred_1, y_1)
         loss_1 = torch.mean(1 - similarity_loss(y_pred_1.view(y_pred_1.shape[0], -1), y_1.view(y_1.shape[0], -1)))
         abs_loss_2 = criterion(y_pred_2, y_2)
         loss_2 = torch.mean(1 - similarity_loss(y_pred_2.view(y_pred_2.shape[0], -1), y_2.view(y_2.shape[0], -1)))
         abs_loss_3 = criterion(y_pred_3, y_3)
         loss_3 = torch.mean(1 - similarity_loss(y_pred_3.view(y_pred_3.shape[0], -1), y_3.view(y_3.shape[0], -1)))
-        total_loss = loss_1 + loss_2 + loss_3 + lamda * (abs_loss_1 + abs_loss_2 + abs_loss_3)
+        total_loss = loss_0 + loss_1 + loss_2 + loss_3 + lamda * (
+            abs_loss_0 + abs_loss_1 + abs_loss_2 + abs_loss_3
+        )
         model.zero_grad()
         total_loss.backward()
 
@@ -143,16 +156,21 @@ class VanillaSaliency():
 
         output_pred = self.model.forward(data_var_sal)
         output_real = self.vgg(data_var_sal)
-        y_pred_1, y_pred_2, y_pred_3 = output_pred[6], output_pred[9], output_pred[12]
-        y_1, y_2, y_3 = output_real[6], output_real[9], output_real[12]
+        # Match the training loss layers (3, 6, 9, 12).
+        y_pred_0, y_pred_1, y_pred_2, y_pred_3 = output_pred[3], output_pred[6], output_pred[9], output_pred[12]
+        y_0, y_1, y_2, y_3 = output_real[3], output_real[6], output_real[9], output_real[12]
 
+        abs_loss_0 = criterion(y_pred_0, y_0)
+        loss_0 = torch.mean(1 - similarity_loss(y_pred_0.view(y_pred_0.shape[0], -1), y_0.view(y_0.shape[0], -1)))
         abs_loss_1 = criterion(y_pred_1, y_1)
         loss_1 = torch.mean(1 - similarity_loss(y_pred_1.view(y_pred_1.shape[0], -1), y_1.view(y_1.shape[0], -1)))
         abs_loss_2 = criterion(y_pred_2, y_2)
         loss_2 = torch.mean(1 - similarity_loss(y_pred_2.view(y_pred_2.shape[0], -1), y_2.view(y_2.shape[0], -1)))
         abs_loss_3 = criterion(y_pred_3, y_3)
         loss_3 = torch.mean(1 - similarity_loss(y_pred_3.view(y_pred_3.shape[0], -1), y_3.view(y_3.shape[0], -1)))
-        total_loss = loss_1 + loss_2 + loss_3 + lamda * (abs_loss_1 + abs_loss_2 + abs_loss_3)
+        total_loss = loss_0 + loss_1 + loss_2 + loss_3 + lamda * (
+            abs_loss_0 + abs_loss_1 + abs_loss_2 + abs_loss_3
+        )
         self.model.zero_grad()
         total_loss.backward()
         grad = data_var_sal.grad.data.detach().cpu()
